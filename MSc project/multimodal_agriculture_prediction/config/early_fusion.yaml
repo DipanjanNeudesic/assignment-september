@@ -1,0 +1,117 @@
+# Early Fusion Model Configuration
+
+model:
+  # Input data specifications
+  satellite_channels: 4          # Number of satellite image channels (R, G, B, NIR)
+  satellite_size: 64             # Size of satellite images (64x64)
+  weather_features: 10           # Number of weather variables
+  weather_sequence_length: 30    # Length of weather time series
+  
+  # Architecture parameters
+  hidden_dim: 256                # Main hidden dimension
+  num_classes: 1                 # Number of output classes (1 for regression)
+  dropout_rate: 0.2              # Dropout rate for regularization
+  
+  # Early fusion specific parameters
+  fusion_method: "early"         # Fusion strategy
+  cnn_layers: [64, 128, 256]     # CNN feature extraction layers
+  lstm_layers: 2                 # Number of LSTM layers for temporal modeling
+  temporal_attention: true       # Use attention mechanism for temporal features
+  
+  # Advanced features
+  batch_normalization: true      # Use batch normalization
+  residual_connections: false    # Use residual connections in CNN
+  bidirectional_lstm: true       # Use bidirectional LSTM
+
+training:
+  # Basic training parameters
+  num_epochs: 50                 # Maximum number of training epochs
+  learning_rate: 0.001           # Initial learning rate
+  batch_size: 32                 # Training batch size
+  weight_decay: 0.0001           # L2 regularization strength
+  
+  # Learning rate scheduling
+  scheduler: "cosine"            # Learning rate scheduler type
+  scheduler_params:
+    T_max: 50                    # Maximum epochs for cosine annealing
+    eta_min: 0.00001            # Minimum learning rate
+  
+  # Optimization settings
+  optimizer: "adam"              # Optimizer type
+  gradient_clip_norm: 1.0        # Gradient clipping threshold
+  mixed_precision: true          # Use automatic mixed precision
+  
+  # Early stopping
+  patience: 10                   # Early stopping patience
+  min_delta: 0.001              # Minimum improvement for early stopping
+  monitor_metric: "val_loss"     # Metric to monitor for early stopping
+  
+  # Model checkpointing
+  save_best_only: true           # Only save best model
+  save_every_epoch: false        # Save model every epoch
+  checkpoint_frequency: 5        # Save checkpoint every N epochs
+
+data:
+  # Data loading parameters
+  num_workers: 4                 # Number of data loader workers
+  pin_memory: true              # Pin memory for faster GPU transfer
+  shuffle_train: true           # Shuffle training data
+  
+  # Data preprocessing
+  normalize_satellite: true     # Normalize satellite imagery
+  normalize_weather: true       # Normalize weather data
+  
+  # Data augmentation
+  augmentation:
+    satellite:
+      horizontal_flip: 0.5      # Probability of horizontal flip
+      vertical_flip: 0.2        # Probability of vertical flip
+      rotation: 15              # Maximum rotation angle (degrees)
+      brightness: 0.1           # Brightness adjustment range
+      contrast: 0.1             # Contrast adjustment range
+    
+    weather:
+      noise_std: 0.02           # Gaussian noise standard deviation
+      missing_ratio: 0.05       # Ratio of missing values to simulate
+
+evaluation:
+  # Evaluation metrics
+  metrics: 
+    - "mse"                     # Mean Squared Error
+    - "mae"                     # Mean Absolute Error
+    - "r2"                      # R-squared score
+    - "mape"                    # Mean Absolute Percentage Error
+  
+  # Evaluation settings
+  batch_size: 64                # Evaluation batch size
+  uncertainty_estimation: true  # Enable uncertainty estimation
+  mc_dropout_samples: 50        # Number of MC Dropout samples
+  
+  # Visualization settings
+  save_predictions_plot: true   # Save predictions vs targets plot
+  save_attention_plots: true    # Save attention visualization plots
+  save_feature_maps: false      # Save intermediate feature maps
+
+logging:
+  # Logging configuration
+  level: "INFO"                 # Logging level
+  save_logs: true              # Save logs to file
+  log_frequency: 10            # Log every N batches
+  
+  # Tensorboard logging
+  tensorboard: true            # Enable tensorboard logging
+  log_histograms: false        # Log parameter histograms
+  log_images: true             # Log sample images
+  
+  # Weights & Biases integration
+  wandb:
+    enabled: false             # Enable W&B logging
+    project: "agriculture-fusion"  # W&B project name
+    tags: ["early_fusion", "agriculture", "multimodal"]
+
+# Hardware and performance settings
+hardware:
+  device: "auto"               # Device selection (auto/cuda/cpu)
+  amp_enabled: true            # Enable automatic mixed precision
+  compile_model: false         # Use torch.compile (requires PyTorch 2.0+)
+  benchmark_cudnn: true        # Enable cuDNN benchmarking

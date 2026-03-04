@@ -1,0 +1,169 @@
+# Late Fusion Model Configuration
+
+model:
+  # Input data specifications  
+  satellite_channels: 4          # Number of satellite image channels (R, G, B, NIR)
+  satellite_size: 64             # Size of satellite images (64x64)
+  weather_features: 10           # Number of weather variables
+  weather_sequence_length: 30    # Length of weather time series
+  
+  # Architecture parameters
+  hidden_dim: 256                # Main hidden dimension
+  num_classes: 1                 # Number of output classes (1 for regression)
+  dropout_rate: 0.2              # Dropout rate for regularization
+  
+  # Late fusion specific parameters
+  fusion_method: "late"          # Fusion strategy
+  
+  # Expert network configurations
+  satellite_expert:
+    cnn_layers: [64, 128, 256, 512]  # CNN layers for satellite expert
+    pooling: "adaptive_avg"           # Pooling strategy
+    activation: "relu"                # Activation function
+    batch_norm: true                  # Use batch normalization
+    
+  weather_expert:
+    lstm_hidden: 128                  # LSTM hidden dimension
+    lstm_layers: 2                    # Number of LSTM layers
+    bidirectional: true               # Use bidirectional LSTM
+    attention: true                   # Use temporal attention
+    
+  # Fusion network configuration
+  fusion_network:
+    hidden_dims: [512, 256, 128]      # Hidden layer dimensions
+    activation: "relu"                # Activation function
+    dropout_rate: 0.3                 # Dropout in fusion layers
+    batch_norm: true                  # Use batch normalization
+    
+  # Advanced features
+  expert_regularization: 0.01        # L2 regularization for expert outputs
+  fusion_attention: true             # Use attention for fusion
+  temperature_scaling: true          # Enable temperature scaling for calibration
+
+training:
+  # Basic training parameters
+  num_epochs: 60                 # Maximum number of training epochs
+  learning_rate: 0.0005          # Initial learning rate (lower for late fusion)
+  batch_size: 24                 # Training batch size (smaller due to complexity)
+  weight_decay: 0.0002           # L2 regularization strength
+  
+  # Multi-stage training
+  pretrain_experts: true         # Pre-train expert networks separately
+  expert_epochs: 20              # Epochs for expert pre-training
+  freeze_experts_epochs: 10      # Epochs to freeze experts during fusion training
+  
+  # Learning rate scheduling
+  scheduler: "plateau"           # Learning rate scheduler type
+  scheduler_params:
+    factor: 0.5                  # LR reduction factor
+    patience: 5                  # Patience for LR reduction
+    min_lr: 0.00001             # Minimum learning rate
+    
+  # Optimization settings
+  optimizer: "adamw"             # Optimizer type (AdamW for better regularization)
+  gradient_clip_norm: 0.5        # Stricter gradient clipping
+  mixed_precision: true          # Use automatic mixed precision
+  
+  # Early stopping
+  patience: 15                   # Early stopping patience (longer for complex model)
+  min_delta: 0.0005             # Minimum improvement for early stopping
+  monitor_metric: "val_r2"       # Monitor R² score instead of loss
+  
+  # Model checkpointing
+  save_best_only: true           # Only save best model
+  save_expert_checkpoints: true  # Save individual expert checkpoints
+  checkpoint_frequency: 10       # Save checkpoint every N epochs
+
+data:
+  # Data loading parameters
+  num_workers: 6                 # More workers for complex model
+  pin_memory: true              # Pin memory for faster GPU transfer
+  shuffle_train: true           # Shuffle training data
+  prefetch_factor: 2            # Prefetch batches for efficiency
+  
+  # Data preprocessing
+  normalize_satellite: true     # Normalize satellite imagery
+  normalize_weather: true       # Normalize weather data
+  
+  # Enhanced data augmentation for late fusion
+  augmentation:
+    satellite:
+      horizontal_flip: 0.5      # Probability of horizontal flip
+      vertical_flip: 0.3        # Probability of vertical flip
+      rotation: 20              # Maximum rotation angle (degrees)
+      brightness: 0.15          # Brightness adjustment range
+      contrast: 0.15            # Contrast adjustment range
+      gaussian_blur: 0.1        # Probability of Gaussian blur
+      
+    weather:
+      noise_std: 0.03           # Gaussian noise standard deviation
+      missing_ratio: 0.1        # Ratio of missing values to simulate
+      temporal_shift: 2         # Maximum temporal shift in days
+      scaling_factor: 0.05      # Random scaling factor
+
+evaluation:
+  # Evaluation metrics
+  metrics: 
+    - "mse"                     # Mean Squared Error
+    - "mae"                     # Mean Absolute Error
+    - "r2"                      # R-squared score
+    - "mape"                    # Mean Absolute Percentage Error
+    - "calibration_error"       # Expected Calibration Error
+  
+  # Evaluation settings
+  batch_size: 48                # Evaluation batch size
+  uncertainty_estimation: true  # Enable uncertainty estimation
+  mc_dropout_samples: 100       # More MC Dropout samples for better uncertainty
+  
+  # Expert analysis
+  analyze_experts: true         # Analyze individual expert performance
+  expert_correlation: true      # Analyze expert output correlation
+  
+  # Visualization settings
+  save_predictions_plot: true   # Save predictions vs targets plot
+  save_expert_outputs: true     # Save expert output analysis
+  save_fusion_attention: true   # Save fusion attention weights
+
+logging:
+  # Enhanced logging for complex model
+  level: "INFO"                 # Logging level
+  save_logs: true              # Save logs to file
+  log_frequency: 5             # Log every N batches (more frequent)
+  
+  # Tensorboard logging
+  tensorboard: true            # Enable tensorboard logging
+  log_histograms: true         # Log parameter histograms
+  log_images: true             # Log sample images
+  log_expert_outputs: true     # Log expert network outputs
+  
+  # Weights & Biases integration
+  wandb:
+    enabled: false             # Enable W&B logging
+    project: "agriculture-fusion"  # W&B project name
+    tags: ["late_fusion", "agriculture", "multimodal", "expert_networks"]
+
+# Hardware and performance settings
+hardware:
+  device: "auto"               # Device selection (auto/cuda/cpu)
+  amp_enabled: true            # Enable automatic mixed precision
+  compile_model: false         # Use torch.compile (requires PyTorch 2.0+)
+  benchmark_cudnn: true        # Enable cuDNN benchmarking
+  memory_efficient: true       # Enable memory efficient training
+
+# Model-specific settings for late fusion
+late_fusion_specific:
+  # Expert network training
+  expert_loss_weights:
+    satellite: 1.0             # Weight for satellite expert loss
+    weather: 1.0               # Weight for weather expert loss
+    fusion: 2.0                # Weight for fusion loss
+    
+  # Fusion strategies
+  fusion_strategies:
+    - "concatenation"          # Concatenate expert outputs
+    - "attention_weighted"     # Attention-weighted combination
+    - "gating"                 # Gated combination
+    
+  # Expert independence regularization
+  independence_loss_weight: 0.1  # Weight for expert independence loss
+  orthogonality_constraint: true # Encourage orthogonal expert representations

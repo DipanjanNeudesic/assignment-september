@@ -1,0 +1,249 @@
+# Gated Multimodal Unit (GMU) Configuration
+
+model:
+  # Input data specifications
+  satellite_channels: 4          # Number of satellite image channels (R, G, B, NIR)
+  satellite_size: 64             # Size of satellite images (64x64)
+  weather_features: 10           # Number of weather variables  
+  weather_sequence_length: 30    # Length of weather time series
+  
+  # Architecture parameters
+  hidden_dim: 256                # Main hidden dimension
+  num_classes: 1                 # Number of output classes (1 for regression)
+  dropout_rate: 0.15             # Dropout rate for regularization
+  
+  # GMU specific parameters
+  fusion_method: "gmu"           # Fusion strategy
+  gmu_hidden_dim: 512            # GMU internal hidden dimension
+  num_experts: 2                 # Number of expert networks (satellite + weather)
+  
+  # Expert network configurations (inherited from late fusion)
+  satellite_expert:
+    cnn_layers: [64, 128, 256, 512]  # CNN layers for satellite expert
+    pooling: "adaptive_avg"           # Pooling strategy
+    activation: "gelu"                # GELU activation for better performance
+    batch_norm: true                  # Use batch normalization
+    spatial_attention: true           # Use spatial attention in CNN
+    
+  weather_expert:
+    lstm_hidden: 128                  # LSTM hidden dimension
+    lstm_layers: 3                    # Number of LSTM layers
+    bidirectional: true               # Use bidirectional LSTM
+    attention: true                   # Use temporal attention
+    transformer_layers: 2             # Additional transformer layers
+    
+  # Quality estimation network
+  quality_estimation:
+    hidden_dims: [256, 128, 64]       # Quality estimation network layers
+    activation: "relu"                # Activation function
+    output_activation: "sigmoid"      # Output activation (quality scores 0-1)
+    dropout_rate: 0.2                 # Dropout in quality network
+    
+  # Gating mechanism
+  gating_network:
+    hidden_dims: [512, 256]           # Gating network layers
+    activation: "tanh"                # Activation function for gating
+    gate_activation: "sigmoid"        # Final gate activation
+    temperature: 1.0                  # Temperature for gate sharpness
+    
+  # Cross-modal attention
+  cross_modal_attention:
+    num_heads: 8                      # Number of attention heads
+    attention_dim: 256                # Attention dimension
+    dropout_rate: 0.1                 # Attention dropout
+    use_layer_norm: true              # Use layer normalization
+    
+  # Advanced GMU features
+  adaptive_gating: true              # Enable adaptive gating based on data quality
+  uncertainty_aware: true            # Enable uncertainty-aware fusion
+  multi_scale_fusion: true           # Use multi-scale feature fusion
+
+training:
+  # Basic training parameters
+  num_epochs: 80                 # Maximum number of training epochs (longer for GMU)
+  learning_rate: 0.0003          # Initial learning rate
+  batch_size: 20                 # Training batch size (smaller due to complexity)
+  weight_decay: 0.0003           # L2 regularization strength
+  
+  # Multi-stage training for GMU
+  training_stages:
+    # Stage 1: Pre-train expert networks
+    expert_pretraining:
+      epochs: 25                 # Epochs for expert pre-training
+      learning_rate: 0.001       # Higher LR for pre-training
+      freeze_other_components: true
+      
+    # Stage 2: Train quality estimation
+    quality_estimation:
+      epochs: 15                 # Epochs for quality network training
+      learning_rate: 0.0005      # Learning rate for quality training
+      freeze_experts: true       # Keep experts frozen
+      
+    # Stage 3: End-to-end fine-tuning
+    end_to_end:
+      epochs: 40                 # Epochs for end-to-end training
+      learning_rate: 0.0002      # Lower LR for fine-tuning
+      unfreeze_all: true         # Unfreeze all components
+  
+  # Learning rate scheduling
+  scheduler: "cosine_warmup"     # Cosine annealing with warmup
+  scheduler_params:
+    warmup_epochs: 5             # Warmup epochs
+    T_max: 75                    # Maximum epochs for cosine annealing
+    eta_min: 0.000001           # Minimum learning rate
+    
+  # Optimization settings
+  optimizer: "adamw"             # AdamW optimizer
+  optimizer_params:
+    betas: [0.9, 0.999]         # Adam beta parameters
+    eps: 1e-8                   # Epsilon for numerical stability
+  gradient_clip_norm: 0.3        # Conservative gradient clipping
+  mixed_precision: true          # Use automatic mixed precision
+  
+  # Loss function configuration
+  loss_function:
+    primary_loss: "mse"          # Primary regression loss
+    auxiliary_losses:
+      quality_consistency: 0.1   # Quality estimation consistency loss
+      expert_diversity: 0.05     # Expert diversity loss
+      gating_sparsity: 0.02      # Gating sparsity loss
+      
+  # Early stopping
+  patience: 20                   # Early stopping patience
+  min_delta: 0.0001             # Minimum improvement for early stopping
+  monitor_metric: "val_r2"       # Monitor R² score
+  
+  # Model checkpointing
+  save_best_only: true           # Only save best model
+  save_component_checkpoints: true  # Save individual component checkpoints
+  checkpoint_frequency: 15       # Save checkpoint every N epochs
+
+data:
+  # Data loading parameters
+  num_workers: 8                 # More workers for complex model
+  pin_memory: true              # Pin memory for faster GPU transfer
+  shuffle_train: true           # Shuffle training data
+  prefetch_factor: 3            # Higher prefetch for complex model
+  persistent_workers: true      # Keep workers alive between epochs
+  
+  # Data preprocessing
+  normalize_satellite: true     # Normalize satellite imagery
+  normalize_weather: true       # Normalize weather data
+  standardize_features: true    # Standardize to zero mean, unit variance
+  
+  # Advanced data augmentation for GMU
+  augmentation:
+    satellite:
+      horizontal_flip: 0.5      # Probability of horizontal flip
+      vertical_flip: 0.3        # Probability of vertical flip
+      rotation: 25              # Maximum rotation angle (degrees)
+      brightness: 0.2           # Brightness adjustment range
+      contrast: 0.2             # Contrast adjustment range
+      gaussian_blur: 0.15       # Probability of Gaussian blur
+      cutout: 0.1               # Probability of cutout augmentation
+      mixup: 0.2                # Probability of mixup augmentation
+      
+    weather:
+      noise_std: 0.04           # Gaussian noise standard deviation
+      missing_ratio: 0.15       # Ratio of missing values to simulate
+      temporal_shift: 3         # Maximum temporal shift in days
+      scaling_factor: 0.08      # Random scaling factor
+      temporal_masking: 0.1     # Probability of temporal masking
+      
+  # Data quality simulation for GMU training
+  quality_simulation:
+    enabled: true               # Enable quality simulation during training
+    cloudy_satellite_prob: 0.2  # Probability of cloudy satellite images
+    missing_weather_prob: 0.15  # Probability of missing weather data
+    sensor_noise_prob: 0.1     # Probability of sensor noise
+
+evaluation:
+  # Evaluation metrics
+  metrics: 
+    - "mse"                     # Mean Squared Error
+    - "mae"                     # Mean Absolute Error
+    - "r2"                      # R-squared score
+    - "mape"                    # Mean Absolute Percentage Error
+    - "calibration_error"       # Expected Calibration Error
+    - "sharpness"               # Prediction sharpness
+  
+  # Evaluation settings
+  batch_size: 32                # Evaluation batch size
+  uncertainty_estimation: true  # Enable uncertainty estimation
+  mc_dropout_samples: 200       # More MC Dropout samples for GMU
+  
+  # GMU-specific evaluation
+  analyze_gating: true          # Analyze gating behavior
+  analyze_quality_estimation: true  # Analyze quality estimation accuracy
+  analyze_attention: true       # Analyze cross-modal attention
+  
+  # Robustness evaluation
+  robustness_testing:
+    enabled: true               # Enable robustness testing
+    corruption_levels: [0.1, 0.2, 0.3, 0.4, 0.5]  # Corruption severity levels
+    corruption_types:           # Types of data corruption to test
+      - "gaussian_noise"
+      - "missing_data" 
+      - "cloudy_satellite"
+      - "sensor_drift"
+  
+  # Visualization settings
+  save_predictions_plot: true   # Save predictions vs targets plot
+  save_gating_analysis: true    # Save gating mechanism analysis
+  save_attention_maps: true     # Save attention visualization
+  save_quality_estimation: true # Save quality estimation plots
+
+logging:
+  # Comprehensive logging for GMU
+  level: "INFO"                 # Logging level
+  save_logs: true              # Save logs to file
+  log_frequency: 3             # Log every N batches (frequent for complex model)
+  
+  # Tensorboard logging
+  tensorboard: true            # Enable tensorboard logging
+  log_histograms: true         # Log parameter histograms
+  log_images: true             # Log sample images
+  log_gating_weights: true     # Log gating mechanism weights
+  log_quality_scores: true     # Log quality estimation scores
+  log_attention_weights: true  # Log attention weights
+  
+  # Weights & Biases integration
+  wandb:
+    enabled: false             # Enable W&B logging
+    project: "agriculture-gmu"    # W&B project name
+    tags: ["gmu", "agriculture", "multimodal", "adaptive_fusion"]
+
+# Hardware and performance settings
+hardware:
+  device: "auto"               # Device selection (auto/cuda/cpu)
+  amp_enabled: true            # Enable automatic mixed precision
+  compile_model: false         # Use torch.compile (experimental for complex models)
+  benchmark_cudnn: true        # Enable cuDNN benchmarking
+  memory_efficient: true       # Enable memory efficient training
+  gradient_checkpointing: true # Use gradient checkpointing to save memory
+
+# GMU-specific advanced settings
+gmu_advanced:
+  # Gating mechanism settings
+  gating_temperature_annealing:
+    enabled: true               # Enable temperature annealing
+    initial_temp: 2.0          # Initial temperature
+    final_temp: 0.5            # Final temperature
+    annealing_epochs: 30       # Epochs for annealing
+    
+  # Quality-aware training
+  quality_aware_training:
+    enabled: true               # Enable quality-aware training
+    quality_threshold: 0.5     # Threshold for high/low quality data
+    adaptive_loss_weighting: true  # Adapt loss weights based on quality
+    
+  # Expert specialization
+  expert_specialization:
+    encourage_specialization: true  # Encourage expert specialization
+    specialization_loss_weight: 0.1  # Weight for specialization loss
+    
+  # Uncertainty quantification
+  uncertainty_methods:
+    - "mc_dropout"              # Monte Carlo dropout
+    - "ensemble"                # Model ensemble (if multiple models)
+    - "epistemic"               # Epistemic uncertainty from gating

@@ -313,6 +313,58 @@ The `seq_len=1` design is intentional: the current implementation uses one annua
 **Contribution to objective:** This Dataset is the direct input interface for the **Phase 1 Bi-LSTM weather regressor** (Step 3, coming). Getting this right is foundational: the same Dataset pattern will be reused for the satellite branch (Phase 2) and the GMU fusion model (Phase 3), with only the feature extraction changed.
 
 ---
+### Step 3 — Ethics, Bias Audit & Fairness Specification (Cells 3.x)
+
+**What it does:** Performs a structured audit of dataset provenance, geographic and temporal representativeness, label imbalance, and defines fairness metrics to be reported alongside accuracy. This step operationalises ethical safeguards and documents limitations before model training.
+
+- **Step 3.1 — Data provenance & representativeness audit:** Verifies USDA/ Sentinel/ HRRR coverage, reports missing counties/years, and documents the sampling frame.
+- **Step 3.2 — Geographic & temporal bias indicators:** Produces diagnostics (maps, state/year summaries) to surface spatial clustering and temporal drift that could bias models.
+- **Step 3.3 — Yield quintile distribution & label imbalance:** Computes quintiles, class frequencies, and recommends stratified splitting or inverse-frequency loss weighting where necessary.
+- **Step 3.4 — Fairness metric functions:** Implements group-level error metrics and utilities (e.g., Jensen correction placeholder `JENSEN_SIGMA2`) used later when back-transforming predictions.
+- **Step 3.5 — Jensen prior & label variance:** Records a prior estimate for Jensen correction and instructs that `JENSEN_SIGMA2` must be updated to the model residual variance after Phase 1 evaluation (Step 4.3).
+
+**Why:** Ensures that any reported accuracy gains are not artefacts of dataset bias and that model outputs intended for stakeholder use include fairness disclosures and appropriate back-transform corrections.
+
+---
+
+### Step 4 — Phase 1 Model: Bi-LSTM Weather Encoder (Cells 4.x)
+
+**Overview:** Implements the unimodal weather regressor used as a baseline and as the pre-trained weather encoder for later fusion. The model is a 2-layer bidirectional LSTM followed by a linear head producing a scalar county-year yield prediction (uses `USE_LOG` when recommended).
+
+- **Step 4.1 — Model definition & initialisation:** Builds the `BiLSTMWeather` module, seeds weights, and prepares `DataLoader` objects (`dl_train`, `dl_test`).
+- **Step 4.2 — Training loop (full details):** Trains for 80 epochs using Adam (`lr=1e-3`), `ReduceLROnPlateau` (patience=10, factor=0.5, min_lr=1e-5) stepped on training MSE, `MSELoss` on the (log) target, batch size 64, gradient clipping (`max_norm=1.0`). Tracks train/val MSE, learning-rate history, and keeps the best `state_dict` by lowest validation MSE; best weights are restored after training and loss curves are plotted inline.
+- **Step 4.3 — Evaluation & Jensen correction:** Performs LOSO / held-out evaluation, computes residual variance on the train split and updates `JENSEN_SIGMA2` for unbiased back-transformation of log-target predictions; reports RMSE, MAE, R², MAPE and saves evaluation tables/figures.
+
+**Artifacts produced:** `bilstm_encoder.pt`, `bilstm_phase1_ckpt.pt`, `weather_train.csv` / `weather_test.csv` (labels), and updated `JENSEN_SIGMA2` value recorded in the notebook for reproducibility.
+
+**Where to find it:** `test.ipynb` sections labelled `Step 4 — Phase 1 Model` and `STEP 4.2 — TRAINING: Bi-LSTM WEATHER ENCODER` (training loop) and `STEP 4.3` (evaluation & Jensen update).
+
+---
+
+### Step 5 — Sentinel-2 Imagery EDA (Cells 5.x)
+
+**What it does:** Exhaustive exploratory analysis of the downloaded Sentinel-2 AG and NDVI HDF5 tiles to characterise spectral distributions, temporal coverage, and cloud-proxy statistics. This step identifies usable imagery and documents gaps prior to training any visual encoder.
+
+- **Step 5.1 — RGB composites & NDVI maps per state:** Renders sample composites and NDVI mosaics to verify tile orientation and band order.
+- **Step 5.2 — Per-band statistics:** Computes per-file and per-band means/variances, histograms, and identifies outlier tiles (e.g., saturated or corrupted files).
+- **Step 5.3 — Temporal coverage & cloud-fraction proxy:** Estimates per-county temporal availability and a simple cloud proxy (e.g., low-green-band energy) to quantify effective sample counts per year.
+- **Step 5.4 — Data gap summary & recommended exclusions:** Outputs a concise table of counties/years to exclude or to down-weight during Phase 2 training due to insufficient or low-quality imagery.
+
+**Why:** Prevents silent failure modes during satellite model training and provides the evidence base for any decisions to collapse county-level labels to state-level supervision when the county intersection is empty.
+
+---
+
+### Step 6 — Phase 2: Satellite Encoder (Cells 6.x)  ⚠️ BLOCKED / fallbacks
+
+**Overview:** Trains a ResNet-18 based visual encoder (temporal LSTM on top of per-tile features) to predict county-level yield from Sentinel-2 imagery. In this workspace the county-level USDA–Sentinel intersection is small, so the notebook includes fallback strategies.
+
+- **Step 6.1 — State-aggregate USDA labels for Sentinel encoder:** When county-labelled imagery is insufficient, computes state-level aggregate labels (mean yield per state-year) to provide supervision for the visual encoder.
+- **Step 6.2 — `SentinelDataset` & `SentinelEncoder` CNN:** Implements a dataset that loads HDF5 tiles (AG / NDVI), applies minimal normalization/augmentation, and a `ResNet-18` backbone followed by a temporal LSTM/MLP head.
+- **Step 6.3 — Training loop & LOSO evaluation:** Runs a training loop with checkpointing and LOSO evaluation where possible; saves the best encoder weights or a phase checkpoint. If county-level supervision is unavailable, reports state-level training results and documents limitations.
+
+**Artifacts & notes:** `sentinel_encoder.pt`, `sentinel_phase2_ckpt.pt`, and `multimodal_index.csv` (if a valid county-level intersection exists). The notebook explicitly flags that Phase 2 is blocked until the USDA–Sentinel FIPS alignment issue is resolved and suggests state-level fallback as a pragmatic alternative.
+
+**Where to find it:** `test.ipynb` sections labelled `Step 5 — Sentinel-2 Imagery EDA` and `Step 6 — Phase 2: Satellite Encoder` (state-aggregate labels, dataset builder, and training loop).
 
 ## Evaluation Framework
 

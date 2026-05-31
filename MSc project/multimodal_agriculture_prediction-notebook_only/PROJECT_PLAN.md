@@ -61,6 +61,14 @@ Sets global seeds, verifies packages, defines all path constants, matplotlib Agg
 
 > **Known limitation (B5):** `tp` (total precipitation) = 0.0 for all records — the Jan 1 initialisation GRIB2 captures weather state, not accumulated growing-season precipitation. This is a structural limitation of the single-snapshot approach and is flagged as future work (daily file extraction).
 
+### Actionable Recommendations for Step 2
+
+1. **Extend HRRR extraction to growing-season daily sequences (fixes B5 and seq_len=1).** Replace the single Jan 1 GRIB2 snapshot with the full daily HRRR archive for April–October (the soybean growing season, ~200 files per year). This will change `HRRRWeatherDataset` to return `(seq_len=200, n_features=9)` tensors, which is the input shape the BiLSTM architecture was actually designed for. Without this, the recurrent model is functionally equivalent to a feedforward network and the temporal modelling rationale is invalid. Priority: **High — must fix before final dissertation submission.**
+
+2. **Replace state-centroid weather proxy with per-county TIGER centroid coordinates (fixes B1).** The current pipeline assigns all counties within a state the same HRRR grid point, erasing all within-state spatial variation in weather. Download the US Census TIGER county centroid table (available at `https://www.census.gov/geo/maps-data/data/tiger.html`), join on FIPS code, and re-run Step 2.2 with per-county `(lat, lon)`. This is expected to reduce RMSE for geographically diverse states (e.g., Kansas, Georgia) where the centroid proxy is most distorted. Priority: **High.**
+
+3. **Pin library versions and replace hardcoded Windows paths with relative paths.** Add a `requirements.txt` (or `environment.yml`) listing exact package versions used (e.g., `torch==2.x.x`, `numpy==1.x.x`, `shap==0.48.0`). Replace `pathlib.Path(r"e:\learnings\...")` in Step 0.3 with `pathlib.Path(__file__).resolve().parent` or an environment-variable-driven base path. This is required for the notebook to run on any machine other than the author's, including the examiner's system. Priority: **Medium — required for reproducibility credit.**
+
 ---
 
 ## Step 3 — Ethics, Bias Audit & Fairness Specification ✅ Complete
@@ -158,6 +166,14 @@ All 9 biases documented with root cause, severity, mitigation, implementation st
 - **Food security embargo.** Predictions must not be released before the corresponding official USDA NASS report to prevent commodity market speculation.
 - **Geographic equity disclosure.** Any deployment must list which US counties are excluded and acknowledge that predictions for under-represented states carry materially higher uncertainty.
 - **Climate nonstationarity.** The model trained on 2016–2022 must not be assumed valid beyond 2025 without recalibration. Yield distributions shift under progressive climate change.
+
+### Actionable Recommendations for Step 3
+
+1. **Implement inverse-frequency state loss weighting to operationalise B2 mitigation.** The bias registry flags B2 (Corn Belt dominance) as high-severity with mitigation "planned" in the training loop, but it was not actually applied. In Step 4.2, add per-sample weights `w_i = N / (K × N_{state_i})` to the `MSELoss` criterion (use `torch.nn.MSELoss(reduction='none')` and manually weight each sample). Re-run evaluation with and without weighting and report both aggregate RMSE and sliced RMSE by state. This directly addresses the fairness failure that Georgia, Kansas, and Louisiana show CV-Error > 0.20 while Corn Belt states dominate the optimisation. Priority: **High — required to validate the fairness contract defined in this step.**
+
+2. **Add Early-Fusion and Late-Fusion baselines to complete the fusion architecture comparison.** The project proposal explicitly committed to these two baselines but only unimodal models and the GMU were implemented. Add: (a) **Early Fusion** — concatenate normalised weather features with flattened satellite embedding before a single MLP head; (b) **Late Fusion** — train separate heads on each modality then average predictions at inference. Without these baselines, the GMU's claimed improvement cannot be attributed to the gating mechanism specifically — it may simply reflect having more parameters. Add both to the cross-model comparison table in Step 7.4. Priority: **High — methodologically required to justify the GMU architecture choice.**
+
+3. **Add a Leave-One-Year-Out (LOYO) 2022 evaluation supplement to address B7.** The current random 80/20 split mixes all years in both train and test, meaning the test set contains 2016–2021 observations leaked temporally. For the dissertation, add a supplementary LOYO evaluation: train on 2016–2021, test on 2022 only. This is the most realistic deployment scenario (predicting a future year from past data) and directly addresses B7. Report LOYO RMSE alongside the random-split RMSE for the BiLSTM (Step 4) and GMU (Step 7). Priority: **Medium — required for scientific validity of the temporal generalisation claim.**
 
 ---
 

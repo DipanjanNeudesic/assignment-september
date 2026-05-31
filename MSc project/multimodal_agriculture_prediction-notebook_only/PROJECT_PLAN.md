@@ -12,13 +12,13 @@
 | 0 | Environment & Reproducibility Setup | ✅ Complete |
 | 1 | USDA Soybean EDA | ✅ Complete |
 | 2 | HRRR Weather Feature Engineering | ✅ Complete |
-| **3** | **Ethics, Bias Audit & Fairness Specification** | **→ Next** |
-| 4 | Phase 1 Model: Bi-LSTM Weather Encoder | 4.1 ✅, 4.2–4.6 pending |
-| 5 | Sentinel-2 Imagery EDA | Pending |
-| 6 | Phase 2: Satellite Encoder (ResNet18 + LSTM) | ⚠️ Blocked |
-| 7 | Phase 3: GMU Fine-tuning | ⚠️ Blocked |
-| 8 | Robustness to Modality Dropout | Pending |
-| 9 | Explainability (SHAP) | Pending |
+| 3 | Ethics, Bias Audit & Fairness Specification | ✅ Complete |
+| 4 | Phase 1 Model: Bi-LSTM Weather Encoder | ✅ Complete |
+| 5 | Sentinel-2 Imagery EDA | ✅ Complete |
+| 6 | Phase 2: Satellite Encoder (CNN) | ✅ Complete |
+| 7 | Phase 3: GMU Fine-tuning | ✅ Complete |
+| 8 | Robustness to Modality Dropout | ✅ Complete |
+| 9 | Explainability (SHAP) | ✅ Complete |
 | 10 | Final Evaluation & Dissertation Reporting | Pending |
 
 ---
@@ -49,38 +49,42 @@ Sets global seeds, verifies packages, defines all path constants, matplotlib Agg
 
 ## Step 2 — HRRR Weather Feature Engineering ✅ Complete
 
-- **2.1** GRIB2 audit — 9 agronomic variables; `r2` missing in 2016 only; all 7 years present
-- **2.2** Nearest-grid-point county extraction via state centroid proxy → `hrrr_raw` (4,438 rows, 634 FIPS)
-- **2.3** Derived features: `wind_speed`, `sp_hpa`, `vpd_hpa` + USDA merge → `weather_features` (3,430 rows, all matched)
-- **2.4** `SimpleImputer` (for 2016 `r2` NaN) + `StandardScaler` — fit on train only; artefacts saved to `data/CropNet/labels/`
-- **2.5** `HRRRWeatherDataset` — `(64, 1, 9)` batches; `ds_train=2744`, `ds_test=686`; target y ∈ [3.207, 4.358] (log-scale)
+- **2.1** GRIB2 audit — 9 agronomic variables confirmed across 7 GRIB2 files (80–143 MB each); `r2` missing in 2016 only; grid shape (1059, 1799), lat 21.14–52.62, lon 225.9–299.08
+- **2.2** Nearest-grid-point county extraction via state centroid proxy → `hrrr_raw`; all 3,535 USDA county-year records matched (100% join rate); `B1` bias documented (state-centroid proxy erases within-state heterogeneity)
+- **2.3** Derived features: `wind_speed = √(u10² + v10²)`, `sp_hpa = sp/100`, `vpd_hpa = saturation_pressure − actual_pressure` + USDA merge → `weather_features` (3,535 rows, 15 columns, 0 missing-all-features records)
+- **2.4** `SimpleImputer(strategy='mean')` for 2016 `r2` NaN + `StandardScaler` — both **fit on train split only** (2,828 rows) to prevent data leakage; artefacts `hrrr_scaler.pkl` and `hrrr_imputer.pkl` saved to `data/CropNet/labels/`
+- **2.5** `HRRRWeatherDataset` (PyTorch `Dataset`) — `(64, 1, 9)` batches; `ds_train=2,828`, `ds_test=707`; target y ∈ [3.174, 4.244] (log-scale); `seq_len=1` (single annual snapshot — acknowledged limitation B5)
 
 **Feature columns:** `t2m_c`, `d2m_c`, `r2`, `wind_speed`, `tp`, `sp_hpa`, `tcc`, `mstav`, `vpd_hpa`
 
+**Scaler mean/std (train split):** `t2m_c` (1.336/9.852), `d2m_c` (−2.054/10.670), `r2` (78.518/13.432), `wind_speed` (4.037/2.353), `sp_hpa` (986.767/25.123), `tcc` (60.762/44.007), `mstav` (66.361/27.217), `vpd_hpa` (1.456/1.xxx)
+
+> **Known limitation (B5):** `tp` (total precipitation) = 0.0 for all records — the Jan 1 initialisation GRIB2 captures weather state, not accumulated growing-season precipitation. This is a structural limitation of the single-snapshot approach and is flagged as future work (daily file extraction).
+
 ---
 
-## Step 3 — Ethics, Bias Audit & Fairness Specification ← NEXT TO IMPLEMENT
+## Step 3 — Ethics, Bias Audit & Fairness Specification ✅ Complete
 
-> This step must be completed and documented before any model results are reported or used in the dissertation. It defines the fairness contract the model must satisfy.
+> All sub-steps (3.1–3.7) executed and documented. Fairness functions are registered for use in Steps 4.3, 6.4, and 7.4. Bias registry B1–B9 is finalised.
 
-### 3.1 Data Provenance & Representativeness Audit
+### 3.1 Data Provenance & Representativeness Audit ✅
 
 | Dimension | Finding | Risk Level |
 |-----------|---------|-----------|
-| Geographic coverage | 10 of ~35 soybean-producing US states; Corn Belt heavily over-represented | High |
-| County coverage | 634 of ~1,400 US soybean counties (~45%) | High |
+| Geographic coverage | 15 of ~35 soybean-producing US states; Corn Belt heavily over-represented (IL, IA, IN, MN, NE > 60% of records) | High |
+| County coverage | 634 of ~1,400 US soybean counties (~45%); ~55% coverage gap | High |
 | Temporal scope | 2016–2022 only; 2019 confounded by trade war + Midwest flooding | Medium |
-| Weather spatial resolution | State-level centroid proxy — within-state heterogeneity erased | High |
-| Modality gap | Sentinel-2 on county ANSI 001; USDA covers ANSI 003+; zero intersection | High |
-| Surveyor bias | USDA NASS over-represents large commercial farms; subsistence/organic excluded | Medium |
+| Weather spatial resolution | State-level centroid proxy — within-state heterogeneity erased (B1) | High |
+| Modality gap | Sentinel-2 on county ANSI 001; USDA covers ANSI 003+; zero FIPS intersection on disk — resolved by using state-aggregate labels for Phase 2/3 | High |
+| Surveyor bias | USDA NASS over-represents large commercial farms; subsistence/organic excluded (B9) | Medium |
 
-### 3.2 Bias Metrics (computed at Steps 4.3, 6.4, and 7.4)
+### 3.2 Bias Metrics (computed at Steps 4.3, 6.4, and 7.4) ✅
 
 **Sliced RMSE** — must be reported per model, not just aggregate:
 
 $$\text{RMSE}_g = \sqrt{\frac{1}{|g|}\sum_{i \in g}(\hat{y}_i - y_i)^2}$$
 
-Mandatory slices: state (10), year (7), yield quintile (Q1–Q5), proximity to state centroid (near/far)
+Mandatory slices: state (15), year (7), yield quintile (Q1–Q5), proximity to state centroid (near/far)
 
 **Mean prediction bias per quintile:**
 
@@ -104,9 +108,9 @@ Currently ~55%. Any deployment must document which counties are excluded and why
 
 $$\hat{y}_{\text{BU/ACRE}} = \exp\!\left(\hat{y}_{\log} + \frac{\hat{\sigma}^2}{2}\right)$$
 
-where $\hat{\sigma}^2$ is the residual variance on the train split. Without this, all back-transformed predictions are systematically underestimates.
+where $\hat{\sigma}^2$ is the residual variance on the train split. Without this, all back-transformed predictions are systematically underestimates. `JENSEN_SIGMA2` initialised here and updated at Step 4.3 to residual variance = 0.029034.
 
-### 3.3 Identified Biases, Mitigations & Tradeoffs
+### 3.3 Identified Biases, Mitigations & Tradeoffs ✅
 
 | # | Bias | Root Cause | Severity | Mitigation | Tradeoff |
 |---|------|-----------|---------|-----------|---------|
@@ -120,7 +124,7 @@ where $\hat{\sigma}^2$ is the residual variance on the train split. Without this
 | B8 | Sentinel-2 AZ 2022 tile anomaly | AZ 2022: 1,524 tiles vs ~60 average — likely archive artefact | Medium | Exclude AZ 2022 from Phase 2/3 training | Removes one county-year from already small satellite dataset |
 | B9 | USDA surveyor bias | Large commercial operations over-represented in NASS survey | Medium | Document; model must not be used for smallholder or OFR-exempt farms | Cannot be corrected without external survey data |
 
-### 3.4 Key Tradeoffs
+### 3.4 Key Tradeoffs ✅
 
 **Accuracy ↔ Fairness**
 Inverse-frequency state weighting (B2) redistributes learning capacity from dominant corn-belt states to minority states. Expected outcome: +0.5–2.0 BU/ACRE RMSE increase on IL/IA, matched by −3–5 BU/ACRE RMSE reduction on AL/DE. Both weighted and unweighted metrics must be reported.
@@ -135,9 +139,20 @@ Including all 7 years maximises the training signal but injects a confounded 201
 `USE_LOG=True` (statistically justified by Shapiro-Wilk) benefits optimisation but makes direct interpretation harder. Always report final metrics back-transformed to BU/ACRE with Jensen correction applied.
 
 **Modality Richness ↔ Deployability**
-The GMU model requires both weather and satellite inputs. The Sentinel-USDA FIPS gap means Phase 2/3 is currently untrainable. The Phase 1 weather-only model is the only currently deployable system. This is a data infrastructure finding — not a model deficiency — and must be framed as such in the dissertation.
+The GMU model requires both weather and satellite inputs. The original Sentinel-USDA FIPS gap was resolved by switching to state-aggregate USDA labels (state mean yield per year) as the supervision signal for Phase 2/3. The Phase 1 weather-only model remains the primary county-level deployable system. This is documented as a data infrastructure finding in the dissertation.
 
-### 3.5 Ethical Use Constraints
+### 3.5 Jensen's Inequality Correction Constant ✅
+
+`JENSEN_SIGMA2` initialised from label prior distribution and updated at Step 4.3 to actual residual variance on the train split:
+- **Prior estimate (label variance):** computed from `log_yield_bu_acre` distribution
+- **Updated value (Step 4.3):** `JENSEN_SIGMA2 = 0.029034` (residual variance of BiLSTM train predictions)
+- Applied in all `jensen_correction()` calls throughout Steps 4–9
+
+### 3.6 Bias Registry B1–B9 ✅
+
+All 9 biases documented with root cause, severity, mitigation, implementation step, and current status. Three biases flagged as high-severity open items for future work: B1 (centroid proxy), B2 (Corn Belt dominance — mitigation planned in training loop), B5 (single-snapshot weather).
+
+### 3.7 Ethical Use Constraints ✅
 
 - **No individual-farm inference.** The model predicts county-aggregate yield only. Extrapolating to individual farm performance is statistically and ethically invalid.
 - **Food security embargo.** Predictions must not be released before the corresponding official USDA NASS report to prevent commodity market speculation.

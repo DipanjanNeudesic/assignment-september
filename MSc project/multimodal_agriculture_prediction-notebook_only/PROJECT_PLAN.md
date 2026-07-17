@@ -184,9 +184,6 @@ When unblocked:
 
 ## Step 7 — Phase 3: GMU Fine-tuning ⚠️ Blocked
 
-**Blocker:** Requires Phase 2 completion.
-
-When unblocked:
 - Gated Multimodal Unit (GMU) fusing 128-dim weather + 256-dim satellite embeddings
 - Warm-start from Step 4 + Step 6 encoder weights
 - Fine-tune on `multimodal_index` (currently empty — data gap documented in Step 3.1)
